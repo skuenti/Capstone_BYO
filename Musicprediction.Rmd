@@ -1,0 +1,120 @@
+---
+title: "Predicting Music Genres"
+author: "Samuel Kuenti"
+date: "12 5 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# setup the R session, load libraries
+knitr::opts_chunk$set(echo = FALSE)
+options(digits = 5)
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(caret)
+library(data.table)
+library(dplyr)
+library(knitr)
+library(caret)
+library(ggplot2)
+
+```
+
+## Abstract
+
+*Das ganze abstract in italics*
+
+\newpage
+
+
+## Introduction
+
+The aim in this project is to develop a machine learning algorithm to predict the genre of a song based on a number of attributes. Such an algorithm could be useful when specific attributes such as the key of a song, or the tempo can be derived automatically, while classifying the musical genre was necessary for an automatic organisation of a music library. 
+
+The project guidelines ask for at least two different modeling approaches, which will be compared side by side. Based on theory, 
+
+xy und zz will be used as modeling techniques.
+
+## Analysis
+
+### Data Preparation
+
+This project is based on [data](https://www.kaggle.com/datasets/vicsuperman/prediction-of-music-genre?resource=download) compiled into a CSV file by Gaoyuan. The dataset is available from the public kaggle data repository. Due to issues with implementing the authentication process in R, the data file was copied to this project's GitHub repository and read into R from there.
+
+```{r}
+# load data from the file in the repo
+music_raw_data <- read.csv("music_genre.csv", header=TRUE)
+```
+
+Let's find out what information we have in this dataset:
+
+```{r}
+# find out what kind of data there are
+kable(colnames(music_raw_data))
+```
+
+Some of these parameters seem pretty quantifiable, e.g. based on the envelope (e.g. key, tempo, popularity), while others are subjective and would have to be rated by listeners (e.g. danceability, energy, valence). A first step could be to only include quantifiable predictors, in order to produce  a lean and sleek algorithm. Subjective parameters based on listeners' ratings would only be included if initial results prove to be too inaccurate.
+
+However, for simplicity's sake, all suitable parameters will be included in the model from the outset.
+
+The music_genre column is the outcome the model should predict. The following variables are deemed irrelevant for the current task and will not be included in the models:
+
+- ID-number of the song (instance_id)
+- Artist and track name (artist_name, track_name)
+- obtained date (obtained_date)
+
+These columns will be dropped from the data.
+
+```{r}
+# remove columns not used in the analysis from the raw data
+
+hier ein R-chunkli schreiben, welches genau das macht
+```
+
+
+### Data cleaning
+
+An initial look at the raw data reveals that some songs seem to have incomplete information (e.g. tempo = ?, or a duration of -1ms).
+
+```{r}
+# initial look at the data
+head(music_raw_data)
+```
+
+Also, some variables have unsuitable data types (e.g. tempo is <chr>). This will be corrected.
+
+There are data on `r nrow(music_raw_data)` songs. The data will be split into a training set (about 80% of the data), a test set (about 10%) and a final validation set (10%). The training and test sets will be used to tune the models. The validation set will simulate actual new data in order to assess the final performance of the models. 
+
+
+```{r}
+# create a training (80%), test (10%) and validation set (10%)
+set.seed(1, sample.kind="Rounding")
+validation_index <- createDataPartition(music_raw_data$music_genre, times = 1, p = 0.1, list=FALSE)
+# 10% will go into the validation set
+validation_set <- music_raw_data[validation_index,]
+# the rest temporarily into the train set; I'll split it up from there
+train_set <- music_raw_data[-validation_index,]
+
+# split train set into actual train set and test set (it's 90% of 90% in the training set, and 10% of 90% in the test set)
+set.seed(1, sample.kind="Rounding")
+test_index <- createDataPartition(train_set$music_genre, times = 1, p = 0.1, list=FALSE)
+test_set <- train_set[test_index,]
+train_set <- train_set[-test_index,]
+```
+
+
+## Results
+
+modeling results, discuss model performance (Tabelle mit immer besserem outcome...)
+
+## Conclusion
+
+brief summary of what happened, potential impact, limitations and future work
