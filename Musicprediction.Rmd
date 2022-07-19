@@ -12,18 +12,18 @@ options(digits = 5)
 
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(randomForest)) install.packages("randomForest", repos = "http://cran.us.r-project.org")
 if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
 if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
 if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
-
 if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
 
 library(tidyverse)
 library(caret)
+library(randomForest)
 library(data.table)
 library(dplyr)
 library(knitr)
-
 library(ggplot2)
 
 ```
@@ -39,7 +39,7 @@ library(ggplot2)
 
 The aim of this project is to develop a machine learning algorithm to predict the genre of a song based on a number of attributes. Such an algorithm could support the automatic organisation of a collection of digital music. 
 
-The project guidelines ask for at least two different modeling approaches to be compared side by side. As will be discussed below, the data in this case provides multiple predictors. Based on theory, simpler modelling approaches like k-nearest neighbors should suffer when too many predictors are involved. In order to explore this theoretical caveat, a k-nearest-neighbor model will be compared to a classification-and-regression-tree, which should deal better with a larger number of inputs. 
+The project guidelines ask for at least two different modeling approaches to be compared side by side. As will be discussed below, the data in this case provides multiple predictors. Based on theory, simpler modelling approaches like k-nearest neighbors should suffer when too many predictors are involved. In order to explore this theoretical caveat, a k-nearest-neighbor model will be compared to a random forest approach, which should deal better with a larger number of inputs. 
 
 ## Analysis
 
@@ -50,7 +50,7 @@ The project guidelines ask for at least two different modeling approaches to be 
 This project is based on [data](https://www.kaggle.com/datasets/vicsuperman/prediction-of-music-genre?resource=download) compiled into a CSV file by Gaoyuan. The dataset is available from the public kaggle data repository. Due to issues with implementing kaggle's authentication process in R, the data file was copied to this project's GitHub repository and is loaded from there.
 
 ```{r}
-# load data from the file in the repo
+# load data from the file in the repo (you should be able to do this after pulling)
 music_raw_data <- read.csv("music_genre.csv", header=TRUE)
 ```
 
@@ -116,7 +116,7 @@ music_raw_data$music_genre <- as.factor(music_raw_data$music_genre)
 
 # replace negative durations with NAs
 music_raw_data$duration_ms <- na_if(music_raw_data$duration_ms, -1)
-head(music_raw_data)
+# head(music_raw_data)
 ```
 
 As noted above, there were some problematic table entries, which could have lead to the generation of NAs.
@@ -154,31 +154,33 @@ length(unique(music_raw_data$music_genre))
 
 ### Splitting of data
 
-The data will be split into a training set (about 80% of the data), a test set (about 10%) and a final validation set (10%). The training and test sets will be used to tune the models. The validation set will simulate actual new data in order to assess the final performance of the various models. 
+The data will be split into a training set (80% of the data), and a test set (20%). The training set will be used to tune the models. The test set will simulate actual new data in order to assess the final performance of the various models. 
 
 
 ```{r}
-# create a training (80%), test (10%) and validation set (10%)
+# create a training (80%) and a test (20%)
 set.seed(1, sample.kind="Rounding")
-validation_index <- createDataPartition(music_raw_data$music_genre, times = 1, p = 0.1, list=FALSE)
-# 10% will go into the validation set
-validation_set <- music_raw_data[validation_index,]
-validation_set <- droplevels(validation_set)
-# the rest temporarily into the train set; I'll split it up from there
-train_set <- music_raw_data[-validation_index,]
-
-# split train set into actual train set and test set (it's 90% of 90% in the training set, and 10% of 90% in the test set)
-set.seed(1, sample.kind="Rounding")
-test_index <- createDataPartition(train_set$music_genre, times = 1, p = 0.1, list=FALSE)
-test_set <- train_set[test_index,]
+test_index <- createDataPartition(music_raw_data$music_genre, times = 1, p = 0.2, list=FALSE)
+# 20% will go into the validation set
+test_set <- music_raw_data[test_index,]
 test_set <- droplevels(test_set)
-train_set <- train_set[-test_index,]
+# the rest into the train set
+train_set <- music_raw_data[-test_index,]
 train_set <- droplevels(train_set)
+
+# I don't need a validation set
+# split train set into actual train set and test set (it's 90% of 90% in the training set, and 10% of 90% in the test set)
+# set.seed(1, sample.kind="Rounding")
+# test_index <- createDataPartition(train_set$music_genre, times = 1, p = 0.1, list=FALSE)
+# test_set <- train_set[test_index,]
+# test_set <- droplevels(test_set)
+# train_set <- train_set[-test_index,]
+
 ```
 
 ## Modelling
 
-### Models with (a few) objective parameters
+### Models with six objective parameters
 
 As described above, a first attempt will only involve parameters which can potentially be derived from the music by means of appropriate algorithms (e.g. based on the envelope curve). It will be interesting to compare the performance of the two models with a different number of predictors.
 
@@ -193,65 +195,65 @@ As discussed above, the following (few) predictors are used as 'objective parame
 
 #### knn (six predictors)
 
-A knn-model will be fitted using the six objective predictors above. 10-fold cross-validation will be used to speed up the model fitting, and k-parameters between 5 and 50 will be tried.
+A knn-model will be fitted using the six objective predictors above. In order to somewhat limit computation times, 5-fold cross-validation will be used to speed up the model fitting.
 
 ```{r}
 # train a knn-model with objective parameters
-set.seed(1, sample.kind="Rounding")
-train_control <- trainControl(method = "cv", number = 10, p = .9)
-knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, method = "knn", 
-                       data = train_set, 
-                       tuneGrid = data.frame(k = seq(5,50,5)),
-                       trControl = train_control)
-ggplot(knn_objective, highlight = TRUE)
+# set.seed(1, sample.kind="Rounding")
+# train_control <- trainControl(method = "cv", number = 10, p = .9)
+# knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, method = "knn", 
+#                        data = train_set, 
+#                        tuneGrid = data.frame(k = seq(5,50,5)),
+#                        trControl = train_control)
+# ggplot(knn_objective, highlight = TRUE)
 ```
 
-A plot of the cross-validation shows that the default range of k-values to be tested did not fare well. (Also, the model accuracy does not exactly look promising, but that will be discussed later on).
+<!-- A plot of the cross-validation shows that the default range of k-values to be tested did not fare well. (Also, the model accuracy does not exactly look promising, but that will be discussed later on). -->
 
 
-Both tails of the curve show signs of divergence. So let's try again and first see what happens with ks below 10.
+<!-- Both tails of the curve show signs of divergence. So let's try again and first see what happens with ks below 10. -->
 
 ```{r}
 # train a knn-model with objective parameters
-set.seed(1, sample.kind="Rounding")
-train_control <- trainControl(method = "cv", number = 10, p = .9)
-knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, method = "knn", 
-                       data = train_set, 
-                       tuneGrid = data.frame(k = seq(1,10,1)),
-                       trControl = train_control)
-ggplot(knn_objective, highlight = TRUE)
-knn_objective$bestTune
+# set.seed(1, sample.kind="Rounding")
+# train_control <- trainControl(method = "cv", number = 10, p = .9)
+# knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, method = "knn", 
+#                        data = train_set, 
+#                        tuneGrid = data.frame(k = seq(1,10,1)),
+#                        trControl = train_control)
+# ggplot(knn_objective, highlight = TRUE)
+# knn_objective$bestTune
 ```
 
 
 
-This does not look any better, since the best tune between 1 and 10 occurs at 1... Therefore, it is necessary to invest more time and effort into finding a better value for k. In the next attempt, ks between 50 and 500 will be looked at, in order to see whether the model stabilises at higher ks. In order to speed up this exploratory step, the resolution will be reduced.
+<!-- This does not look any better, since the best tune between 1 and 10 occurs at 1... Therefore, it is necessary to invest more time and effort into finding a better value for k. In the next attempt, ks between 50 and 500 will be looked at, in order to see whether the model stabilises at higher ks. In order to speed up this exploratory step, the resolution will be reduced. -->
 
 ```{r}
 # train a knn-model with objective parameters
 set.seed(1, sample.kind="Rounding")
-train_control <- trainControl(method = "cv", number = 10, p = .9)
+train_control <- trainControl(method = "cv", number = 5, p = .8)
 knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, method = "knn", 
                        data = train_set, 
-                       tuneGrid = data.frame(k = seq(50,500,25)),
+                       tuneGrid = data.frame(k = seq(1,501,50)),
                        trControl = train_control)
 ggplot(knn_objective, highlight = TRUE)
-knn_objective$bestTune
+knn_objective$bestTune$k
 ```
-Note that while the model's accuracy seems to increase with larger ks, at k = 500, the training function reports 'too many ties in knn'. As more neighbors are included into the voting process, the likelihood of ties occurring increases, and in this case, the limit of viable ks seems to be around 500. 
+Note that while the model's accuracy seems to increase with larger ks, at k = 500, the training function reports 'too many ties in knn'. As more neighbors are included into the voting process, the likelihood of ties occurring seems to increase, and in this case, the limit of viable ks seems to be around 500. 
 
-Finally, in order to find the best possible k, values between 450 and 500 will be explored. This should also reveal the limiting k before the 'too many ties' issue arises.
+In order to find the best possible k, values between 450 and 500 will be explored. This should also reveal the limiting k before the 'too many ties' issue arises.
 
 ```{r}
 # train a knn-model with objective parameters
 set.seed(1, sample.kind="Rounding")
-train_control <- trainControl(method = "cv", number = 10, p = .9)
+train_control <- trainControl(method = "cv", number = 5, p = .8)
 knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, method = "knn", 
                        data = train_set, 
-                       tuneGrid = data.frame(k = seq(450,500,3)),
+                       tuneGrid = data.frame(k = seq(450,501,3)),
                        trControl = train_control)
 ggplot(knn_objective, highlight = TRUE)
-knn_objective$bestTune
+knn_objective$bestTune$k
 ```
 
 
@@ -265,7 +267,26 @@ model_results
 
 Not very impressive: there are ten different genres, so this model performs a mere 6% above chance.
 
-### Models with (a few) objective in addition to (a few more) subjective parametes
+#### Random forest (six predictors)
+
+For comparison, a random forest model will be trained on the train_set. This weighs heavy on the CPU, so the minimum nodesize is set to 5 (instead of the default of 1) in order to limit computation time somewhat.
+
+```{r}
+control <- trainControl(method = "cv", number = 5)
+grid <- data.frame(mtry = seq(1,10,2))
+rf_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, 
+                      method = "rf",
+                      ntree = 150,
+                      trControl = control,
+                      tuneGrid = grid,
+                      nodesize = 5,
+                      data = train_set)
+ggplot(rf_objective)
+rf_objective$bestTune$mtry
+```
+
+
+### Models with six objective in addition to seven subjective parametes
 
 Here, seven additional 'subjective' parameters are included into the model:
 
@@ -286,16 +307,16 @@ This new knn-model will be fitted using the five objective predictors plus the s
 ```{r}
 # train a knn-model with objective and subjective parameters
 set.seed(1, sample.kind="Rounding")
-train_control <- trainControl(method = "cv", number = 10, p = .9)
+train_control <- trainControl(method = "cv", number = 5, p = .8)
 knn_objective_subjective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms +
                          acousticness + danceability +
                          energy + instrumentalness +
                          liveness + speechiness + valence, method = "knn", 
                        data = train_set, 
-                       tuneGrid = data.frame(k = seq(2,502,50)),
+                       tuneGrid = data.frame(k = seq(1,501,50)),
                        trControl = train_control)
 ggplot(knn_objective_subjective, highlight = TRUE)
-knn_objective_subjective$bestTune
+knn_objective_subjective$bestTune$k
 ```
 
 At k = 502, the 'too many ties' error occurred again. Accuracy increases with more neighbors, but there seems to be a limit again at around k=500. Finetuning will look at ks between 450 and 504 (two steps beyond the apparently limiting k = 500, just to see whether it disappears beyond 500...). 
@@ -303,16 +324,16 @@ At k = 502, the 'too many ties' error occurred again. Accuracy increases with mo
 ```{r}
 # train a knn-model with objective and subjective parameters
 set.seed(1, sample.kind="Rounding")
-train_control <- trainControl(method = "cv", number = 10, p = .9)
+train_control <- trainControl(method = "cv", number = 5, p = .8)
 knn_objective_subjective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms +
                          acousticness + danceability +
                          instrumentalness +
                          liveness + speechiness + valence, method = "knn", 
                        data = train_set, 
-                       tuneGrid = data.frame(k = seq(450,504,3)),
+                       tuneGrid = data.frame(k = seq(450,501,3)),
                        trControl = train_control)
 ggplot(knn_objective_subjective, highlight = TRUE)
-knn_objective_subjective$bestTune
+knn_objective_subjective$bestTune$k
 ```
 
 The accuracy of this second model on the test set looks as follows:
@@ -322,7 +343,7 @@ knn_objective_subjective_accuracy <- confusionMatrix(predict(knn_objective_subje
 model_results <- bind_rows(model_results,
                           tibble(Method="knn (seven predictors)",
                                      Accuracy = knn_objective_subjective_accuracy))
-model_results
+kable(model_results, caption = "Model accuracies")
 ```
  
 
