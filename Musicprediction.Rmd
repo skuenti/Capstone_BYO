@@ -5,8 +5,9 @@ date: "12 5 2022"
 output: html_document
 ---
 
-
 ```{r setup, include=FALSE}
+Sys.time() # when processing started
+
 # setup the R session, load libraries
 knitr::opts_chunk$set(echo = FALSE)
 options(digits = 5)
@@ -35,12 +36,11 @@ library(ggplot2)
 
 \newpage
 
-
 ## Introduction
 
-The aim of this project is to develop a machine learning algorithm to predict the genre of a song based on a number of attributes. Such an algorithm could support the automatic organisation of a collection of digital music. 
+The aim of this project is to develop a machine learning algorithm to predict the genre of a song based on a number of attributes. Such an algorithm could support the automatic organisation of a collection of digital music.
 
-The project guidelines ask for at least two different modeling approaches to be compared side by side. As will be discussed below, the data in this case provides multiple predictors. Based on theory, simpler modelling approaches like k-nearest neighbors should suffer when too many predictors are involved. In order to explore this theoretical caveat, a k-nearest-neighbor model will be compared to a random forest approach, which should deal better with a larger number of inputs. 
+The project guidelines ask for at least two different modeling approaches to be compared side by side. As will be discussed below, the data in this case provides multiple predictors. Based on theory, simpler modelling approaches like k-nearest neighbors should suffer when too many predictors are involved. In order to explore this theoretical caveat, a k-nearest-neighbor model will be compared to a random forest approach, which should deal better with a larger number of inputs.
 
 ## Analysis
 
@@ -61,47 +61,11 @@ The following table shows what kind of information the dataset contains.
 
 ```{r}
 # find out what kind of data there are
-kables(as.list(colnames(music_raw_data)), caption="Variables in the dataset")
+kable(as.list(colnames(music_raw_data)), caption="Variables in the dataset")
 ```
 
-The idea is to predict the genre of a song (music_genre). The genre variable distinguishes the following musical genres:
 
-```{r}
-kable(unique(music_raw_data$music_genre), caption = "Musical Genres")
-length(unique(music_raw_data$music_genre))
-```
 
-Some of the parameters seem pretty quantifiable, for instance based on the envelope of a song (e.g. key, tempo, popularity), while others are subjective and would have to be rated by listeners (e.g. danceability, energy, valence). A viable initial approach could be to only include objectively quantifiable predictors, in order to produce a lean and sleek algorithm. Subjective parameters based on listeners' ratings would only be included if initial results prove to be too inaccurate.
-
-The following variables are assumed to be based on listeners' subjective rating (there is no information on how the dataset was obtained):
-
-* acousticness
-* danceability (maybe correlated with tempo?)
-* energy
-* instrumentalness
-* liveness
-* speechiness
-* valence
-
-This leaves the following basic predictors, which are assumed to be objectively measurable by suitable algorithms, without involving actual listeners (with popularity being a bit of a hybrid, it will be included here):
-
-* popularity
-* key
-* loudness
-* mode
-* tempo
-* duration
-* artist name
-
-These will be called 'objective parameters'. They look fairly generic, and it is doubtful that a song's genre could be reliably predicted based on these parameters alone. Nevertheless, this will be attempted in a first step, and 'subjective parameters' (those based on listeners' ratings) will be included only if necessary.
-
-In addition, the following variables are deemed irrelevant for the current task and will not be included in the models:
-
-* ID-number of the song (instance_id)
-* track name track_name)
-* obtained date (obtained_date)
-
-The model will predict the song's genre (music_genre).
 
 #### Data cleaning
 
@@ -109,7 +73,7 @@ An initial look at the raw data reveals that some songs seem to have incomplete 
 
 ```{r}
 # initial look at the data
-kable(head(music_raw_data))
+kable(str(music_raw_data))
 ```
 
 Also, some variables have unsuitable data types (e.g. tempo is <chr>). This will be corrected. In addition, negative durations of songs will be replaced with NAs (these will be suppressed later).
@@ -120,23 +84,22 @@ music_raw_data$key <- as.factor(music_raw_data$key)
 music_raw_data$mode <- as.factor(music_raw_data$mode)
 music_raw_data$tempo <- as.numeric(music_raw_data$tempo)
 music_raw_data$music_genre <- as.factor(music_raw_data$music_genre)
+music_raw_data$artist_name <- as.factor(music_raw_data$artist_name)
 
 # replace negative durations with NAs
 music_raw_data$duration_ms <- na_if(music_raw_data$duration_ms, -1)
 # head(music_raw_data)
 ```
 
-As noted above, there were some problematic table entries, which could have lead to the generation of NAs.
-
-
+As noted above, there were some problematic table entries, which lead to the generation of NAs.
 
 ```{r}
 kable(sapply(music_raw_data, {function(x) any(is.na(x))}), caption = "Columns with NAs")
 ```
 
-There are different options for dealing with NA rows. Here, for simplicity's sake and because the dataset is reasonably large, the lamest option will be implemented - all songs with NAs will be removed from the dataset. 
+There are different options for dealing with NA rows. Here, for simplicity's sake and because the dataset is reasonably large, the lamest option will be implemented - all songs with NAs will be removed from the dataset.
 
-All in all, there are data on `r nrow(music_raw_data)` songs in the dataset (including those with NAs). Those with NAs will be deleted. 
+All in all, there are data on `r nrow(music_raw_data)` songs in the dataset (including those with NAs). Those with NAs will be deleted.
 
 ```{r}
 # nrow(music_raw_data)
@@ -144,23 +107,29 @@ music_raw_data <- na.omit(music_raw_data)
 # nrow(music_raw_data)
 ```
 
-
-This leads to the loss of about 10% of the data and leaves complete information about `r nrow(music_raw_data)` songs.
+This leads to the loss of about 20% of the data and leaves complete information about `r nrow(music_raw_data)` songs, more than enough as will be seen later on.
 
 ```{r}
 kable(sapply(music_raw_data, {function(x) any(is.na(x))}), caption = "Columns with NAs after data cleaning")
+```
+
+Now the data looks as follows:
+
+```{r}
+str(music_raw_data)
 ```
 
 
 ### Light mode
 
 ```{r}
-n_fold <- 5 # setting a global n for cross validations (same reason as above)
-percent <- 10 # only using this many percent of the entire dataset
+n_fold <- 5 # setting a global n for cross validations
+percent <- 50 # only using this many percent of the entire dataset
 ```
 
+In order to limit the processing times, only `r percent`% of the data are used during the report writing process. As soon as the project matures, calculation times will be assessed and this limit will be adapted if possible.
 
-In order to limit the processing times, only `r percent`% of the data are used during the report writing process. As soon as the project matures, calculation times will be assessed and this limit will be removed.
+With 3-fold crossvalidation and 5% of the data, the script completed in under 2 minutes on a 2017 iMac.
 
 Also, crossvalidation will be n-fold, with n being set at `r n_fold` initially. Later on this may be increased to 10, based on processing speeds.
 
@@ -175,7 +144,7 @@ Caution: even with these limits, the whole script will take a long time to run t
 
 ### Splitting of data
 
-The data will be split into a training set (80% of the data), and a test set (20%). The training set will be used to tune the models. The test set will simulate actual new data in order to assess the final performance of the various models. 
+The data will be split into a training set (80% of the data), and a test set (20%). The training set will be used to tune the models. The test set will simulate actual new data in order to assess the final performance of the various models.
 
 ```{r}
 # create a training (80%) and a test (20%)
@@ -192,70 +161,114 @@ train_set <- droplevels(train_set)
 
 ## Modelling
 
+The idea is to predict the genre of a song (music_genre). The genre variable distinguishes the following musical genres:
+
+```{r}
+kable(unique(music_raw_data$music_genre), caption = "Musical Genres")
+length(unique(music_raw_data$music_genre))
+```
+
+
+Some of the parameters seem pretty quantifiable, for instance based on the envelope of a song (e.g. key, tempo, popularity), while others are subjective and would have to be rated by listeners (e.g. danceability, energy, valence). A viable initial approach could be to only include objectively quantifiable predictors, in order to produce a lean and sleek algorithm. Subjective parameters based on listeners' ratings would only be included if initial results prove to be too inaccurate.
+
+The following variables are assumed to be based on listeners' subjective rating (there is no information on how the dataset was obtained):
+
+-   acousticness
+-   danceability (maybe correlated with tempo?)
+-   energy
+-   instrumentalness
+-   liveness
+-   speechiness
+-   valence
+
+
+This leaves the following basic predictors, which are assumed to be objectively measurable by suitable algorithms, without involving actual listeners (with popularity being a bit of a hybrid, it will be included here):
+
+-   popularity
+-   key
+-   loudness
+-   mode
+-   tempo
+-   duration
+
+The artist name would be a subjective parameter with high predictive power (many artists tend to be in some genre for most of their career). However, being a factor with over a thousand levels, this feature was found to increase computation times beyond practical limits, so it is excluded from the models.
+
+These will be called 'objective parameters'. They look fairly generic, and it is doubtful that a song's genre could be reliably predicted based on these parameters alone. Nevertheless, this will be attempted in a first step, and 'subjective parameters' (those based on listeners' ratings) will be included only if necessary.
+
+In addition, the following variables are deemed irrelevant for the current task and will not be included in the models:
+
+-   ID-number of the song (instance_id)
+-   track name (track_name)
+-   obtained date (obtained_date)
+
+The model will predict the song's genre (music_genre).
+
 ### Models with seven objective parameters
 
 As described above, a first attempt will only involve parameters which can potentially be derived from the music by means of appropriate algorithms (e.g. based on the envelope curve). It will be interesting to compare the performance of the two models with a different number of predictors.
 
-As discussed above, the following (few) predictors are used as 'objective parameters':
+As discussed above, the seven following predictors are used as 'objective parameters':
 
-* popularity
-* key
-* loudness
-* mode
-* tempo
-* duration
-* artist name
+-   popularity
+-   key
+-   loudness
+-   mode
+-   tempo
+-   duration
+-   artist name
 
-#### knn (seven predictors)
+#### knn (six predictors)
 
-A knn-model will be fitted using the six objective predictors above. In order to somewhat limit computation times, `r n_fold`-fold cross-validation will be used to speed up the model fitting. Also, in a first attempt, ks over a large range will be tested with low resolution (computation times...) to find out where the model performs best.
+A knn-model will be fitted using the six objective predictors above. In order to somewhat limit computation times, `r n_fold`-fold cross-validation will be used to speed up the model fitting, and inital resolutin will be low.
 
 ```{r}
 # train a knn-model with objective parameters
 set.seed(1, sample.kind="Rounding")
 train_control <- trainControl(method = "cv", number = n_fold, p = .8)
-knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms + artist_name, method = "knn", 
+knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, # + artist_name, 
+                       method = "knn", 
                        data = train_set, 
-                       tuneGrid = data.frame(k = seq(1,501,50)),
+                       tuneGrid = data.frame(k = seq(2,502,50)),
+                       trControl = train_control)
+ggplot(knn_objective, highlight = TRUE)
+# knn_objective$bestTune$k
+```
+
+Note that while the model's accuracy seems to increase with larger ks, at k = 500, the training function reports 'too many ties in knn'. As more neighbors are included into the voting process, the likelihood of ties occurring seems to increase, and in this case, the limit of viable ks seems to be around 500.
+
+In a second step, k-values approaching this limit at k=500 will be examined with better resolution.
+
+
+```{r}
+# train a knn-model with objective parameters
+set.seed(1, sample.kind="Rounding")
+train_control <- trainControl(method = "cv", number = n_fold, p = .8)
+knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, # + artist_name, 
+                       method = "knn", 
+                       data = train_set, 
+                       tuneGrid = data.frame(k = seq(460,502,2)),
                        trControl = train_control)
 ggplot(knn_objective, highlight = TRUE)
 knn_objective$bestTune$k
 ```
-Note that while the model's accuracy seems to increase with larger ks, at k = 500, the training function reports 'too many ties in knn'. As more neighbors are included into the voting process, the likelihood of ties occurring seems to increase, and in this case, the limit of viable ks seems to be around 500. 
-
-In order to find the best possible k, values between 450 and 500 will be explored with better resolution. This should also reveal the limiting k before the 'too many ties' issue arises.
-
-```{r}
-# train a knn-model with objective parameters
-set.seed(1, sample.kind="Rounding")
-train_control <- trainControl(method = "cv", number = n_fold, p = .8)
-knn_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms + artist_name, method = "knn", 
-                       data = train_set, 
-                       tuneGrid = data.frame(k = seq(450,501,3)),
-                       trControl = train_control)
-ggplot(knn_objective, highlight = TRUE)
-```
 
 The model performs best at `r knn_objective$bestTune$k`.
 
-
 ```{r}
 knn_objective_accuracy <- confusionMatrix(predict(knn_objective, test_set, type = "raw"), test_set$music_genre)$overall["Accuracy"]
-model_results <- tibble(Method = "knn (seven predictors)", Accuracy = knn_objective_accuracy) 
+model_results <- tibble(Method = "knn (6 predictors)", Accuracy = knn_objective_accuracy) 
 # kable(model_results, caption = "Model accuracies")
 ```
 
-Not very impressive: there are ten different genres, so this model performs a mere 6% above chance.
-
 #### Random forest (seven predictors)
 
-For comparison, a random forest model will be trained on the train_set. 
+For comparison, a random forest model will be trained on the train_set.
 
 ```{r}
 # setup of random forest parameters
 nodesize_setting <- 5 # treesize, higher number = smaller trees (less branches)
 ntree_setting <- 100 # size of the 'forest'
-grid <- data.frame(mtry = seq(1,20,2)) # range of mtry = # of variables sampled at splits
+grid <- data.frame(mtry = seq(1,100,5)) # range of mtry = # of variables sampled at splits
 ```
 
 Fitting random forests weighs heavy on the CPU, so the minimum nodesize is set to `r nodesize_setting` (instead of the default of 1) in order to limit computation time somewhat.
@@ -264,7 +277,7 @@ Fitting random forests weighs heavy on the CPU, so the minimum nodesize is set t
 
 set.seed(1, sample.kind="Rounding")
 control <- trainControl(method = "cv", number = n_fold)
-rf_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms + artist_name, 
+rf_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms, # + artist_name, 
                       method = "rf",
                       ntree = ntree_setting,
                       trControl = control,
@@ -274,11 +287,12 @@ rf_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo +
 ggplot(rf_objective)
 rf_objective$bestTune$mtry
 ```
+This model did best when `r rf_objective$bestTune$mtry` variables were selected for each tree, with accuracy declining slightly as more were selected.
 
 ```{r}
 rf_objective_accuracy <- confusionMatrix(predict(rf_objective, test_set, type = "raw"), test_set$music_genre)$overall["Accuracy"]
 model_results <- bind_rows(model_results,
-                          tibble(Method="Random forest (seven predictors)",
+                          tibble(Method="Random forest (6 predictors)",
                                      Accuracy = rf_objective_accuracy))
 # kable(model_results, caption = "Model accuracies")
 ```
@@ -287,19 +301,19 @@ model_results <- bind_rows(model_results,
 
 Here, seven additional 'subjective' parameters are included into the model:
 
-* acousticness
-* danceability (my favorite predictor!)
-* energy
-* instrumentalness
-* liveness
-* speechiness
-* valence
+-   acousticness
+-   danceability (my favorite predictor!)
+-   energy
+-   instrumentalness
+-   liveness
+-   speechiness
+-   valence
 
 The idea is to find out whether including these is worth the trouble, since assessing these parameters would inevitably involve collecting user ratings. This would be much more complicated than just deriving the 'subjective six' parameters directly from the music by means of suitable algorithms.
 
-#### knn (14 predictors)
+#### knn (13 predictors)
 
-This new knn-model will be fitted using the five objective predictors plus the seven additional ones above. Since the model involving the 'objective six' only performed best at high values of k, k-values over a large range will be tried with low resolution in a first step. This should reveal whether high values of k are optimal again. (I wrote this model fitting section while working out, so whenever the computer crunched numbers, I exercised...)
+This new knn-model will be fitted using the five objective predictors plus the seven additional ones above. Since the knn-model involving the 'objective six' only performed best at high values of k, k-values over a large range will be tried with low resolution in a first step. This should reveal whether high values of k are optimal again. (I wrote this model fitting section while working out, so whenever the computer crunched numbers, I exercised...)
 
 ```{r}
 # train a knn-model with objective and subjective parameters
@@ -309,15 +323,15 @@ knn_objective_subjective <- train(music_genre ~ popularity + key + loudness + mo
                          acousticness + danceability +
                          energy + instrumentalness +
                          liveness + speechiness + 
-                         valence + artist_name, method = "knn", 
+                         valence, # + artist_name, 
+                         method = "knn", 
                        data = train_set, 
-                       tuneGrid = data.frame(k = seq(1,501,50)),
+                       tuneGrid = data.frame(k = seq(2,502,50)),
                        trControl = train_control)
 ggplot(knn_objective_subjective, highlight = TRUE)
-knn_objective_subjective$bestTune$k
+# knn_objective_subjective$bestTune$k
 ```
-
-At k = 502, the 'too many ties' error occurred again. Accuracy increases with more neighbors, but there seems to be a limit again at around k=500. Finetuning will look at ks between 450 and 504 (two steps beyond the apparently limiting k = 500, just to see whether it disappears beyond 500...). 
+Indeed, a high number of neigbors improves performance, but the limit leading to 'too many ties' is again reached at k around 500. So in a second step, ks approaching 500 are tested with better resolution.
 
 ```{r}
 # train a knn-model with objective and subjective parameters
@@ -325,10 +339,12 @@ set.seed(1, sample.kind="Rounding")
 train_control <- trainControl(method = "cv", number = n_fold, p = .8)
 knn_objective_subjective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms +
                          acousticness + danceability +
-                         instrumentalness + artist_name +
-                         liveness + speechiness + valence, method = "knn", 
+                         energy + instrumentalness +
+                         liveness + speechiness + 
+                         valence, # + artist_name, 
+                         method = "knn", 
                        data = train_set, 
-                       tuneGrid = data.frame(k = seq(450,501,3)),
+                       tuneGrid = data.frame(k = seq(460,502,2)),
                        trControl = train_control)
 ggplot(knn_objective_subjective, highlight = TRUE)
 knn_objective_subjective$bestTune$k
@@ -339,37 +355,37 @@ The accuracy of this second model on the test set looks as follows:
 ```{r}
 knn_objective_subjective_accuracy <- confusionMatrix(predict(knn_objective_subjective, test_set, type = "raw"), test_set$music_genre)$overall["Accuracy"]
 model_results <- bind_rows(model_results,
-                          tibble(Method="knn (14 predictors)",
+                          tibble(Method="knn (12 predictors)",
                                      Accuracy = knn_objective_subjective_accuracy))
 # kable(model_results, caption = "Model accuracies")
 ```
- 
-#### Random forest (14 predictors)
 
-Finally, a random forest model with all predictors will be trained on the train_set. 
+#### Random forest (12 predictors)
+
+Finally, a random forest model with all predictors will be trained on the train_set.
 
 ```{r}
 set.seed(1, sample.kind="Rounding")
 control <- trainControl(method = "cv", number = n_fold)
-rf_objective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms +
+rf_objective_subjective <- train(music_genre ~ popularity + key + loudness + mode + tempo + duration_ms +
                          acousticness + danceability +
-                         instrumentalness +
-                         liveness + speechiness + valence, method = "rf",
+                         energy + instrumentalness +
+                         liveness + speechiness + 
+                         valence, # + artist_name, 
+                      method = "rf",
                       ntree = ntree_setting,
                       trControl = control,
                       tuneGrid = grid,
                       nodesize = nodesize_setting,
                       data = train_set)
-ggplot(rf_objective)
-rf_objective$bestTune$mtry
+ggplot(rf_objective_subjective)
+rf_objective_subjective$bestTune$mtry
 ```
-
-
 
 ```{r}
 rf_objective_accuracy <- confusionMatrix(predict(rf_objective, test_set, type = "raw"), test_set$music_genre)$overall["Accuracy"]
 model_results <- bind_rows(model_results,
-                          tibble(Method="Random forest (14 predictors)",
+                          tibble(Method="Random forest (12 predictors)",
                                      Accuracy = rf_objective_accuracy))
 # kable(model_results, caption = "Model accuracies")
 ```
@@ -380,9 +396,13 @@ The following tabe summarises the overal accuracies of the four models on the te
 
 ```{r}
 kable(model_results, caption = "Model accuracies")
+
+Sys.time()  # when processing ended (in order to find out how long the whole script took to run)
 ```
 
+The performance of the knn model was the same, whether 6 or 13 predictors were included. Both models performed best with a k just below a threshold of 500, where the modelling function raised an error because 'too many ties' affected the voting process.
 
+Both random forests perfomed best when six variables were sampled for each tree.
 
 ## Conclusion
 
@@ -390,13 +410,12 @@ The aim of this project was to compare two different modeling approaches to pred
 
 These were the main observations:
 
-* classification based on knn performs terrible with that many predictors, with model performance barely above chance levels
-* normalising predictors could have helped the knn model somewhat, although it is doubtful whether the effort would have had a significant effect on model performance
-* for some reason, the 'too many ties issue' arises at k = 500, I can't mathematically tell why (the limit exist independent of the size of the dataset used; I worked with 10% of the data for most of the development process to limit processing times, but the limit was the same when I used the larger proportions of the entire dataset)
-* the knn-model did not improve when more predictors were added
-* the knn approach may already be suffering from the 'curse of dimensionality' in the leaner version with seven predictors, as the predictor space is complex and distances tend to be large, while differences in distances remaining relatively subtle; an issue which is only exacerbated by adding more predictors
-* model fitting requires very long computation times if all data is included, this imposes limit to crossvalidation and optimisation parameters
-* (Note that it took a 2011 MacBook Pro with a 2.4GHz Intel Core i7 about x minutes to run the whole script while at 10% of the dataset and 5-fold crossvalidations; so processing times definitely are an issue with the approach implemented here)
-* as expected, the ramdom forest model performed reasonably well, and it improved when additional predictors were included
+-   classification based on knn performs terrible with that many predictors, with model performance barely above chance levels
+-   normalising predictors could have helped the knn model somewhat, although it is doubtful whether the effort would have had a significant effect on model performance
+-   for some reason, the 'too many ties issue' arises at k = 500, I can't mathematically tell why (the limit exist independent of the size of the dataset used; I worked with 10% of the data for most of the development process to limit processing times, but the limit was the same when I used the larger proportions of the entire dataset)
+-   the knn-model did not improve when more predictors were added
+-   the knn approach may already be suffering from the 'curse of dimensionality' in the leaner version with seven predictors, as the predictor space is complex and distances tend to be large, while differences in distances remaining relatively subtle; an issue which is only exacerbated by adding more predictors
+-   model fitting requires very long computation times if all data is included, this imposes limit to crossvalidation and optimisation parameters
+-   as expected, the ramdom forest model performed reasonably well, and it improved when additional predictors were included
 
 While the knn-approach can be discarded for this problem, a solution based on an optimised random forest model could be a viable path to solving the automatic classification of songs in a music library. Additional effort would be required to optimse the model further, as several modelling parameters were kept constant here in order to allow for practical computation times.
